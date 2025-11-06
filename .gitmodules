@@ -1,0 +1,6 @@
+[submodule "third_party/RGFW"]
+	path = third_party/RGFW
+	url = https://github.com/ColleagueRiley/RGFW.git
+[submodule "third_party/geol"]
+	path = third_party/geol
+	url = https://github.com/jmdha/geol.git
