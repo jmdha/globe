@@ -10,14 +10,16 @@
 #define RGFW_IMPLEMENTATION
 #include "third_party/RGFW/RGFW.h"
 
-#include "io.h"
-
 #define WIDTH    1920
 #define HEIGHT   1080
 
 #define ZOOM_MIN 0.00001
 #define ZOOM_MAX 100
 #define ZOOMS    100
+
+const char POLY[] = {
+	#embed "ne_10m_admin_0_countries.shp"
+};
 
 const u8 WHITE[4] = { 255, 255, 255, 255 };
 const u8 BLACK[4] = {   0,   0,   0, 255 };
@@ -106,11 +108,8 @@ int main(int argc, char** argv) {
 	SURFACE = RGFW_createSurface(BUF, WIDTH, HEIGHT, RGFW_formatRGBA8);
 	RGFW_window_setExitKey(WIN, RGFW_escape);
 
-	char** str = f_open("ne_10m_admin_0_countries.shp");
-
 	geol_record_t* records = NULL;
-	size_t         record_count = geol_shp_decode(&records, *str);
-	f_close(str);
+	size_t         record_count = geol_shp_decode(&records, POLY);
 
 	while (RGFW_window_shouldClose(WIN) == RGFW_FALSE) {
 		input();
