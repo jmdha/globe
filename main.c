@@ -2,13 +2,13 @@
 #include <math.h>
 
 #define GEOL_SHAPEFILE_IMPLEMENTATION
-#include <geol/geol_shapefile.h>
+#include "third_party/geol/geol_shapefile.h"
 
 #define GEOL_PROJ_IMPLEMENTATION
-#include <geol/geol_proj.h>
+#include "third_party/geol/geol_proj.h"
 
 #define RGFW_IMPLEMENTATION
-#include <RGFW/RGFW.h>
+#include "third_party/RGFW/RGFW.h"
 
 #include "io.h"
 
