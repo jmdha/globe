@@ -1,119 +1,97 @@
 #include <stdio.h>
 #include <math.h>
-
-#define GEOL_SHAPEFILE_IMPLEMENTATION
-#include "third_party/geol/geol_shapefile.h"
-
-#define GEOL_PROJ_IMPLEMENTATION
-#include "third_party/geol/geol_proj.h"
+#include <time.h>
 
 #define RGFW_IMPLEMENTATION
 #include "third_party/RGFW/RGFW.h"
 
-#define WIDTH    1920
-#define HEIGHT   1080
+#define W 800           // width
+#define H 800           // height
+#define Z 0.00006       // zoom
+#define S 0.01          // rotation speed
+#define A 6378137.0     // earth major axis
+#define B 6356752.3142  // earth minor axis
+#define F ((A - B) / A) // ellipsoid flatness
+#define E (F * (2 - F)) // square of eccentricity
 
-#define ZOOM_MIN 0.00001
-#define ZOOM_MAX 100
-#define ZOOMS    100
+typedef struct point {
+	double lat, lon;
+} point_t;
 
-const char POLY[] = {
-	#embed "ne_10m_admin_0_countries.shp"
+typedef struct polygon {
+	size_t   len;
+	point_t* points;
+} polygon_t;
+
+const char COUNTRIES[] = {
+	#embed "10m_countries"
 };
 
 const u8 WHITE[4] = { 255, 255, 255, 255 };
-const u8 BLACK[4] = {   0,   0,   0, 255 };
 
-u8*           BUF;
-RGFW_window*  WIN;
-RGFW_surface* SURFACE;
+void WGS84toECEF(double* x, double* y, double* z, double lat, double lon, double h) {
+	const double N = A / sqrt(1 - E * pow(lat, 2));
 
-double R = 0;
-size_t ZOOM_STEP = 1;
-double ZOOM = 1;
-
-void render_clear(void) {
-	memset(BUF, 0, WIDTH * HEIGHT * 4 * sizeof(u8));
+	*x = (h + N) * cos(lat) * cos(lon);
+	*y = (h + N) * cos(lat) * sin(lon);
+	*z = (h + N * (1 - E)) * sin(lat);
 }
 
-void render_point(int x, int y, const u8 color[4]) {
-	if (x < 0 || y < 0 || x >= WIDTH || y >= HEIGHT) return;
-	i32 c = (HEIGHT - y - 1) * (4 * WIDTH) + 4 * x;
-	memcpy(&BUF[c], color, 4 * sizeof(u8));
-}
-
-void render_line(int x0, int y0, int x1, int y1, const u8 color[4]) {
-	const float h  = sqrt(pow(x1 - x0, 2) + pow(y1 - y0, 2));
-	const float mx = 1 / h * (x1 - x0);
-	const float my = 1 / h * (y1 - y0);
-
-	for (size_t i = 0; i < h; i++) {
-		i32 x = x0 + i * mx;
-		i32 y = y0 + i * my;
-		render_point(x, y, color);
-	}
-}
-
-void render_polygon(const double* px, const double* py, size_t count, const u8 color[4]) {
-	for (size_t i = 1;; i++) {
-		double x, y, z;
-		WGS84toECEF_deg(&x, &y, &z, py[i], px[i] + R, 0);
-		if (x > 0)
-			render_point(
-				ZOOM * y + WIDTH / 2,
-				ZOOM * z + HEIGHT / 2,
-				color
-			);
-		if (px[i] == px[0] && py[i] == py[0])
-			break;
-	}
-}
-
-void render_map(const geol_record_t* records, size_t record_count) {
-	for (size_t i = 0; i < record_count; i++) {
-		const geol_record_t* record = &records[i];
-		for (size_t t = 0; t < record->part_count; t++) {
-			const size_t start = record->parts[t];
-			render_polygon(
-				&record->px[start], &record->py[start],
-				record->point_count,
-				WHITE
-			);
+void load_polygons(size_t* count, polygon_t** polygons, const char* buf) {
+	memcpy(count, buf, sizeof(size_t));
+	buf = buf + sizeof(size_t);
+	*polygons = malloc(*count * sizeof(polygon_t));
+	for (size_t i = 0; i < *count; i++) {
+		polygon_t* p = &((*polygons)[i]);
+		memcpy(&p->len, buf, sizeof(size_t));
+		buf = buf + sizeof(size_t);
+		p->points = malloc(p->len * sizeof(point_t));
+		for (size_t t = 0; t < p->len; t++) {
+			memcpy(&p->points[t], buf, sizeof(point_t));
+			buf = buf + sizeof(point_t);
 		}
 	}
 }
 
-void input(void) {
-	RGFW_pollEvents();
-	float scroll_x, scroll_y;
-	RGFW_getMouseScroll(&scroll_x, &scroll_y);
-	if (scroll_y > 0 && ZOOM_STEP < ZOOMS) ZOOM_STEP++;
-	if (scroll_y < 0 && ZOOM_STEP > 0)     ZOOM_STEP--;
-	const float log_min = log(ZOOM_MIN);
-	const float log_max = log(ZOOM_MAX);
-	const float log_zoom = log_min + (log_max - log_min) * ZOOM_STEP / ZOOMS;
-	ZOOM = exp(log_zoom);
-	R += 0.1;
+void render_point(u8* buf, int x, int y, const u8 color[4]) {
+	size_t i = (H - y - 1) * (4 * W) + 4 * x;
+	memcpy(&buf[i], color, 4 * sizeof(u8));
 }
 
-void render(const geol_record_t* records, size_t record_count) {
-	render_clear();
-	render_map(records, record_count);
-	RGFW_window_blitSurface(WIN, SURFACE);
+void render_polygon(u8* buf, const polygon_t* polygon, double r) {
+	for (size_t i = 1; i < polygon->len; i++) {
+		const point_t* p = &polygon->points[i];
+		double x, y, z;
+		WGS84toECEF(&x, &y, &z, p->lon, p->lat + r, 0);
+		if (x < 0) continue;
+		// Technically, this should render a line
+		// However, because it is so zoomed out there is no visual difference
+		render_point(buf, Z * y + W / 2, Z * z + H / 2, WHITE);
+	}
+}
+
+void render_polygons(u8* buf, size_t count, const polygon_t* polygons, double r) {
+	for (size_t i = 0; i < count; i++)
+		render_polygon(buf, &polygons[i], r);
 }
 
 int main(int argc, char** argv) {
-	WIN     = RGFW_createWindow("", 0, 0, WIDTH, HEIGHT, RGFW_windowCenter);
-	BUF     = malloc(WIDTH * HEIGHT * 4);
-	SURFACE = RGFW_createSurface(BUF, WIDTH, HEIGHT, RGFW_formatRGBA8);
-	RGFW_window_setExitKey(WIN, RGFW_escape);
+	size_t     polygon_count;
+	polygon_t* polygons;
+	load_polygons(&polygon_count, &polygons, COUNTRIES);
 
-	geol_record_t* records = NULL;
-	size_t         record_count = geol_shp_decode(&records, POLY);
+	u8*           buf     = malloc(4 * W * H);
+	RGFW_window*  win     = RGFW_createWindow("", 0, 0, W, H, RGFW_windowCenter);
+	RGFW_surface* surface = RGFW_createSurface(buf, W, H, RGFW_formatBGRA8);
 
-	while (RGFW_window_shouldClose(WIN) == RGFW_FALSE) {
-		input();
-		render(records, record_count);
+	double rotation = 0;
+
+	while (RGFW_window_shouldClose(win) == RGFW_FALSE) {
+		RGFW_pollEvents();
+		memset(buf, 0, 4 * W * H * sizeof(u8));
+		rotation += S;
+		render_polygons(buf, polygon_count, polygons, rotation);
+		RGFW_window_blitSurface(win, surface);
 	}
 
 	return 0;
