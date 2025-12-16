@@ -1,6 +1,4 @@
-#include <stdio.h>
 #include <math.h>
-#include <time.h>
 
 #define RGFW_IMPLEMENTATION
 #include "third_party/RGFW/RGFW.h"
