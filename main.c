@@ -18,11 +18,6 @@ typedef struct point {
 	double lat, lon;
 } point_t;
 
-typedef struct polygon {
-	size_t   len;
-	point_t* points;
-} polygon_t;
-
 const char COUNTRIES[] = {
 	#embed "10m_countries"
 };
@@ -37,30 +32,14 @@ void WGS84toECEF(double* x, double* y, double* z, double lat, double lon, double
 	*z = (h + N * (1 - E)) * sin(lat);
 }
 
-void load_polygons(size_t* count, polygon_t** polygons, const char* buf) {
-	memcpy(count, buf, sizeof(size_t));
-	buf = buf + sizeof(size_t);
-	*polygons = malloc(*count * sizeof(polygon_t));
-	for (size_t i = 0; i < *count; i++) {
-		polygon_t* p = &((*polygons)[i]);
-		memcpy(&p->len, buf, sizeof(size_t));
-		buf = buf + sizeof(size_t);
-		p->points = malloc(p->len * sizeof(point_t));
-		for (size_t t = 0; t < p->len; t++) {
-			memcpy(&p->points[t], buf, sizeof(point_t));
-			buf = buf + sizeof(point_t);
-		}
-	}
-}
-
 void render_point(u8* buf, int x, int y, const u8 color[4]) {
 	size_t i = (H - y - 1) * (4 * W) + 4 * x;
 	memcpy(&buf[i], color, 4 * sizeof(u8));
 }
 
-void render_polygon(u8* buf, const polygon_t* polygon, double r) {
-	for (size_t i = 1; i < polygon->len; i++) {
-		const point_t* p = &polygon->points[i];
+void render_polygon(u8* buf, size_t count, const point_t* points, double r) {
+	for (size_t i = 1; i < count; i++) {
+		const point_t* p = &points[i];
 		double x, y, z;
 		WGS84toECEF(&x, &y, &z, p->lon, p->lat + r, 0);
 		if (x < 0) continue;
@@ -70,16 +49,16 @@ void render_polygon(u8* buf, const polygon_t* polygon, double r) {
 	}
 }
 
-void render_polygons(u8* buf, size_t count, const polygon_t* polygons, double r) {
-	for (size_t i = 0; i < count; i++)
-		render_polygon(buf, &polygons[i], r);
+void render_polygons(u8* buf, double r) {
+	const size_t count = *(size_t*)COUNTRIES;
+	const char* ptr = COUNTRIES + sizeof(size_t);
+	for (size_t i = 0; i < count; i++) {
+		render_polygon(buf, *(size_t*)ptr, (point_t*)(ptr + sizeof(size_t)), r);
+		ptr += sizeof(size_t) + *(size_t*)ptr * sizeof(point_t);
+	}
 }
 
 int main(int argc, char** argv) {
-	size_t     polygon_count;
-	polygon_t* polygons;
-	load_polygons(&polygon_count, &polygons, COUNTRIES);
-
 	u8*           buf     = malloc(4 * W * H);
 	RGFW_window*  win     = RGFW_createWindow("", 0, 0, W, H, RGFW_windowCenter);
 	RGFW_surface* surface = RGFW_createSurface(buf, W, H, RGFW_formatBGRA8);
@@ -90,7 +69,7 @@ int main(int argc, char** argv) {
 		RGFW_pollEvents();
 		memset(buf, 0, 4 * W * H * sizeof(u8));
 		rotation += S;
-		render_polygons(buf, polygon_count, polygons, rotation);
+		render_polygons(buf, rotation);
 		RGFW_window_blitSurface(win, surface);
 	}
 
