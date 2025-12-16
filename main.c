@@ -38,7 +38,7 @@ void render_point(u8* buf, int x, int y, const u8 color[4]) {
 }
 
 void render_polygon(u8* buf, size_t count, const point_t* points, double r) {
-	for (size_t i = 1; i < count; i++) {
+	for (size_t i = 0; i < count; i++) {
 		const point_t* p = &points[i];
 		double x, y, z;
 		WGS84toECEF(&x, &y, &z, p->lon, p->lat + r, 0);
