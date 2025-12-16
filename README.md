@@ -1,5 +1,5 @@
 # globe
-A 3d render of the earth in ~100 lines of C code.
+A 3d render of the earth in ~60 lines of C code.
 
 https://github.com/user-attachments/assets/4dbf95de-6352-46a7-afa3-b3a3e925f7f7
 
